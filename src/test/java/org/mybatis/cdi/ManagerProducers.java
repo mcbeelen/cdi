@@ -18,48 +18,25 @@ package org.mybatis.cdi;
 import java.io.IOException;
 import java.io.Reader;
 import java.sql.Connection;
-import javax.annotation.PostConstruct;
 
 import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Disposes;
 import javax.enterprise.inject.Produces;
 import javax.inject.Named;
 
 import org.apache.ibatis.io.Resources;
 import org.apache.ibatis.jdbc.ScriptRunner;
 import org.apache.ibatis.session.SqlSession;
-import org.apache.ibatis.session.SqlSessionManager;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 
-@ApplicationScoped
 public class ManagerProducers {
 
-  private SqlSessionManager manager1;
-
-  private SqlSessionManager manager2;
-
-  private SqlSessionManager manager3;
-  
-  private SqlSessionManager managerJTA;
-
-  @PostConstruct
-  public void init() {
-    try {
-      manager1 = createSessionManager(1);
-      manager2 = createSessionManager(2);
-      manager3 = createSessionManager(3);
-      managerJTA = createSessionManagerJTA();
-    }
-    catch (IOException ex) {
-      throw new RuntimeException(ex);
-    }
-  }
-
-  private SqlSessionManager createSessionManager(int n) throws IOException {
+  private SqlSessionFactory createSessionManager(int n) throws IOException {
     Reader reader = Resources.getResourceAsReader("org/mybatis/cdi/mybatis-config_" + n + ".xml");
-    SqlSessionManager manager = SqlSessionManager.newInstance(reader);
+    SqlSessionFactory sqlSessionFactory = new SqlSessionFactoryBuilder().build(reader);
     reader.close();
 
-    SqlSession session = manager.openSession();
+    SqlSession session = sqlSessionFactory.openSession();
     Connection conn = session.getConnection();
     reader = Resources.getResourceAsReader("org/mybatis/cdi/CreateDB_" + n + ".sql");
     ScriptRunner runner = new ScriptRunner(conn);
@@ -68,16 +45,16 @@ public class ManagerProducers {
     reader.close();
     session.close();
 
-    return manager;
+    return sqlSessionFactory;
   }
 
 
-  private SqlSessionManager createSessionManagerJTA() throws IOException {
+  private SqlSessionFactory createSessionManagerJTA() throws IOException {
     Reader reader = Resources.getResourceAsReader("org/mybatis/cdi/mybatis-config_jta.xml");
-    SqlSessionManager manager = SqlSessionManager.newInstance(reader);
+    SqlSessionFactory sqlSessionFactory = new SqlSessionFactoryBuilder().build(reader);
     reader.close();
 
-    SqlSession session = manager.openSession();
+    SqlSession session = sqlSessionFactory.openSession();
     Connection conn = session.getConnection();
     reader = Resources.getResourceAsReader("org/mybatis/cdi/CreateDB_JTA.sql");
     ScriptRunner runner = new ScriptRunner(conn);
@@ -86,37 +63,37 @@ public class ManagerProducers {
     reader.close();
     session.close();
 
-    return manager;
+    return sqlSessionFactory;
   }
  
     
   @Named("manager1")
   @Produces
-  public SqlSessionManager createManager1() throws IOException {
-    return manager1;
+  @ApplicationScoped
+  public SqlSessionFactory createManager1() throws IOException {
+    return createSessionManager(1);
   }
 
   @Named("manager2")
   @Produces
-  public SqlSessionManager createManager2() throws IOException {
-    return manager2;
+  @ApplicationScoped
+  public SqlSessionFactory createManager2() throws IOException {
+    return createSessionManager(2);
   }
 
   @Produces
+  @ApplicationScoped
   @MySpecialManager
   @OtherQualifier
-  public SqlSessionManager createManager3() throws IOException {
-    return manager3;
+  public SqlSessionFactory createManager3() throws IOException {
+    return createSessionManager(3);
   }
 
   @Produces
+  @ApplicationScoped
   @JtaManager
-  public SqlSessionManager createManagerJTA() throws IOException {
-    return managerJTA;
+  public SqlSessionFactory createManagerJTA() throws IOException {
+    return createSessionManagerJTA();
   }  
   
-  public void disposes(@Disposes SqlSessionManager m) {
-    assert m.isManagedSessionStarted() == false : "Leaked SqlSession";
-  }
-
 }

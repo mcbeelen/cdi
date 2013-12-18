@@ -15,6 +15,7 @@
  */
 package org.mybatis.cdi;
 
+import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Level;
@@ -26,6 +27,9 @@ import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.InjectionPoint;
 import javax.enterprise.inject.spi.InjectionTarget;
 import javax.enterprise.inject.spi.ProcessInjectionTarget;
+import javax.enterprise.inject.spi.ProcessProducerMethod;
+
+import org.apache.ibatis.session.SqlSessionFactory;
 
 /**
  * MyBatis CDI extension
@@ -36,20 +40,30 @@ public class Extension implements javax.enterprise.inject.spi.Extension {
 
   private final Logger logger = Logger.getLogger(getClass().getName());
   private final Set<MapperBeanKey> mappers = new HashSet<MapperBeanKey>();
+  private final Set<ManagerBean> managers = new HashSet<ManagerBean>();
 
-  public <X> void processAnnotatedType(@Observes ProcessInjectionTarget<X> event) {
+  public <X> void processProducerMethod(@Observes ProcessProducerMethod<?, ?> event, BeanManager beanManager) {
+    Type type = ((ProcessProducerMethod<?, ?>) event).getAnnotatedProducerMethod().getBaseType();
+    if (type instanceof Class<?> && SqlSessionFactory.class.isAssignableFrom((Class<?>) type)) {
+      managers.add(new ManagerBean(event.getAnnotatedProducerMethod().getAnnotations(), beanManager));
+    }
+  }
+
+  public <X> void processInjectionTarget(@Observes ProcessInjectionTarget<X> event) {
     final InjectionTarget<X> it = event.getInjectionTarget();
     for (final InjectionPoint ip : it.getInjectionPoints()) {
       if (ip.getAnnotated().isAnnotationPresent(Mapper.class)) {
-        mappers.add(new MapperBeanKey(
-          (Class<?>)ip.getAnnotated().getBaseType(), 
-          ip.getAnnotated().getAnnotations()));
+        mappers.add(new MapperBeanKey((Class<?>) ip.getAnnotated().getBaseType(), ip.getAnnotated().getAnnotations()));
       }
     }
   }
-  
+
   public void afterBeanDiscovery(@Observes AfterBeanDiscovery abd, BeanManager bm) {
     logger.log(Level.INFO, "MyBatis CDI Module - Activated");
+    for (ManagerBean manager : managers) {
+      abd.addBean(manager);
+    }
+    managers.clear();
     for (MapperBeanKey key : mappers) {
       logger.log(Level.INFO, "MyBatis CDI Module - Mapper dependency discovered: {0}", key.getKey());
       abd.addBean(key.createBean(bm));

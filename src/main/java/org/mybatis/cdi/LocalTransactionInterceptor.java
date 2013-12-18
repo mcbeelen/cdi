@@ -15,18 +15,20 @@
  */
 package org.mybatis.cdi;
 
+import java.lang.annotation.Annotation;
 import java.util.HashSet;
 import java.util.Set;
 
+import javax.enterprise.inject.Any;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
+import javax.enterprise.util.AnnotationLiteral;
 import javax.inject.Inject;
 import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
 import org.apache.ibatis.reflection.ExceptionUtil;
-import org.apache.ibatis.session.SqlSessionManager;
 
 /**
  * Best-effort interceptor for local transactions.

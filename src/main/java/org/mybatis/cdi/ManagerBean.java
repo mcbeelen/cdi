@@ -28,38 +28,59 @@ import javax.enterprise.inject.Default;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.util.AnnotationLiteral;
+import javax.inject.Named;
+import javax.inject.Qualifier;
+
+import org.apache.ibatis.session.SqlSessionFactory;
 
 /**
- * Internal CDI metadata for a mapper bean.
+ * Internal CDI metadata for a sesssion manager bean.
  *
- * @author Frank David Martínez
+ * @author Eduardo Macarron
  */
-public class MapperBean implements Bean {
-
-  final Class type;
-
-  final Set<Annotation> qualifiers;
+public class ManagerBean implements Bean {
 
   final BeanManager beanManager;
+ 
+  final Set<Annotation> qualifiers;
 
-  final String sqlSessionManagerName;
+  final String sqlSessionFactoryName;
   
-  public MapperBean(Class type, Set<Annotation> qualifiers, String sqlSessionManagerName, BeanManager beanManager) {  
-    this.type = type;
-    this.sqlSessionManagerName = sqlSessionManagerName;
-    this.beanManager = beanManager;    
-    if (qualifiers == null || qualifiers.isEmpty()) {
+  public ManagerBean(Set<Annotation> annotations, BeanManager beanManager) {  
+    this.sqlSessionFactoryName = getBeanName(annotations);
+    this.beanManager = beanManager;
+    if (annotations == null || annotations.isEmpty()) {
       this.qualifiers = new HashSet<Annotation>();
       this.qualifiers.add(new AnnotationLiteral<Default>() {});
-      this.qualifiers.add(new AnnotationLiteral<Any>() {});    }
+      this.qualifiers.add(new AnnotationLiteral<Any>() {});
+    }
     else {
-      this.qualifiers = qualifiers;
-    }    
+      this.qualifiers = filterQualifiers(annotations);
+    }
   }
+  
+  private String getBeanName(Set<Annotation> annotations) {
+    for (Annotation a : annotations) {
+      if (a.annotationType().equals(Named.class)) {
+        return ((Named) a).value();
+      }
+    }
+    return null;    
+  }
+  
+  private Set<Annotation> filterQualifiers(Set<Annotation> annotations) {
+    final Set<Annotation> set = new HashSet<Annotation>();
+    for (Annotation a : annotations) {
+      if (a.annotationType().isAnnotationPresent(Qualifier.class) && !a.annotationType().equals(Named.class)) {
+        set.add(a);
+      }
+    }
+    return set;
+  }  
 
   public Set getTypes() {
     Set<Type> types = new HashSet<Type>();
-    types.add(type);
+    types.add(SqlSessionManager.class);
     return types;
   }
 
@@ -72,7 +93,7 @@ public class MapperBean implements Bean {
   }
 
   public String getName() {
-    return null;
+    return sqlSessionFactoryName == null ? null : "$$mybatis$$_" + sqlSessionFactoryName;
   }
 
   public Set getStereotypes() {
@@ -80,7 +101,7 @@ public class MapperBean implements Bean {
   }
 
   public Class getBeanClass() {
-    return type;
+    return SqlSessionManager.class;
   }
 
   public boolean isAlternative() {
@@ -96,28 +117,29 @@ public class MapperBean implements Bean {
   }
 
   public Object create(CreationalContext creationalContext) {
-    Bean managerBean = findSqlSessionManagerBean();
-    SqlSessionManager manager = (SqlSessionManager) beanManager.getReference(managerBean, SqlSessionManager.class, creationalContext);
-    return manager.getMapper(type);
+    Bean managerBean = findSqlSessionFactoryBean();
+    SqlSessionFactory factory = (SqlSessionFactory) beanManager.getReference(managerBean, SqlSessionFactory.class, creationalContext);
+    SqlSessionManager manager = new SqlSessionManager(factory);
+    return manager;
   }
 
   public void destroy(Object instance, CreationalContext creationalContext) {
     creationalContext.release();
   }
 
-  private Bean findSqlSessionManagerBean() {
+  private Bean findSqlSessionFactoryBean() {
     Set<Bean<?>> beans;
-    if (sqlSessionManagerName != null) {
-      beans = beanManager.getBeans("$$mybatis$$_" + sqlSessionManagerName);
+    if (sqlSessionFactoryName != null) {
+      beans = beanManager.getBeans(sqlSessionFactoryName);
     }
     else {
-      beans = beanManager.getBeans(SqlSessionManager.class, qualifiers.toArray(new Annotation[] {}));
+      beans = beanManager.getBeans(SqlSessionFactory.class, qualifiers.toArray(new Annotation[] {}));
     }
     Bean bean = beanManager.resolve(beans);
     if (bean == null) {
-      throw new MybatisCdiConfigurationException("There are no SqlSessionManager producers properly configured.");
+      throw new MybatisCdiConfigurationException("There are no SqlSessionFactory producers properly configured.");
     }
     return bean;
   }
-  
+
 }
