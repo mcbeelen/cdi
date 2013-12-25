@@ -13,77 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.mybatis.cdi;
+package org.mybatis.cdi.impl;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.UndeclaredThrowableException;
 
 import javax.inject.Inject;
-import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
 import org.apache.ibatis.session.SqlSessionManager;
+import org.mybatis.cdi.Transactional;
 
 /**
- * Best-effort interceptor for local transactions. It locates all the instances
- * of {@code SqlSssionManager} and starts transactions on all them. It cannot
- * guarantee atomiticy if there is more than one {@code SqlSssionManager}. Use
- * XA drivers, a JTA container and the {@link JtaTransactionInterceptor} in that
- * case.
- *
  * @see JtaTransactionInterceptor
+ * @see LocalTransactionInterceptor
  *
- * @author Frank David Martínez
+ * @author Eduardo Macarron
  */
 @Transactional
 @Interceptor
-public class LocalTransactionInterceptor {
+public class AbstractTransactionInterceptor {
 
   @Inject
   private SqlSessionManagerRegistry registry;
 
-  @AroundInvoke
-  public Object invoke(InvocationContext ctx) throws Exception {
-    Transactional transactional = getTransactionalAnnotation(ctx);
-    boolean started = start(transactional);
-    if (started) {
-      beginJta();
-    }
-    boolean needsRollback = false;
-    Object result;
-    try {
-      result = ctx.proceed();
-    }
-    catch (Exception ex) {
-      Exception unwrapped = unwrapException(ex); 
-      needsRollback = needsRollback(transactional, unwrapped);
-      throw unwrapped;
-    }
-    finally {
-      if (started) {
-        if (needsRollback) {
-          rollback(transactional);
-        } 
-        else {
-          commit(transactional);
-        }
-        close();
-        endJta(needsRollback);
-      }
-    }
-    return result;
-  }
-
-  protected void beginJta() throws Exception {
-    // nothing to do
-  }
-
-  protected void endJta(boolean commit) throws Exception {
-    // nothing to do
-  }
-
-  private boolean needsRollback(Transactional transactional, Throwable throwable) {
+  protected boolean needsRollback(Transactional transactional, Throwable throwable) {
     if (transactional.rollbackOnly()) {
       return true;
     }
@@ -106,7 +61,7 @@ public class LocalTransactionInterceptor {
     return t;
   }
 
-  private boolean start(Transactional transactional) {
+  protected boolean start(Transactional transactional) {
     boolean started = false;
     for (SqlSessionManager manager : registry.getManagers()) {
       if (!manager.isManagedSessionStarted()) {
@@ -117,25 +72,31 @@ public class LocalTransactionInterceptor {
     return started;
   }
 
-  private void commit(Transactional transactional) {
+  protected void commit(Transactional transactional) {
     for (SqlSessionManager manager : registry.getManagers()) {
       manager.commit(transactional.force());
     }
   }
 
-  private void rollback(Transactional transactional) {
+  protected void rollback(Transactional transactional) {
     for (SqlSessionManager manager : registry.getManagers()) {
       manager.rollback(transactional.force());
     }
   }
 
-  private void close() {
+  protected void flush() {
+    for (SqlSessionManager manager : registry.getManagers()) {
+      manager.flushStatements();
+    }
+  }
+  
+  protected void close() {
     for (SqlSessionManager manager : registry.getManagers()) {
       manager.close();
     }
   }
   
-  private Exception unwrapException(Exception wrapped) {
+  protected Exception unwrapException(Exception wrapped) {
     Throwable unwrapped = wrapped;
     while (true) {
       if (unwrapped instanceof InvocationTargetException) {

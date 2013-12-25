@@ -13,15 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.mybatis.cdi;
+package org.mybatis.cdi.impl;
 
 import java.lang.annotation.Annotation;
 import java.util.Iterator;
 import java.util.Set;
+
 import javax.enterprise.context.spi.CreationalContext;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
+
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.cdi.MybatisCdiConfigurationException;
 
 /**
  *

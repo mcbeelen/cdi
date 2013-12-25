@@ -18,6 +18,8 @@ package org.mybatis.cdi;
 import javax.inject.Inject;
 import javax.interceptor.Interceptors;
 
+import org.mybatis.cdi.impl.JtaTransactionInterceptor;
+
 @Interceptors(JtaTransactionInterceptor.class)
 @Transactional
 public class FooServiceJTA {  

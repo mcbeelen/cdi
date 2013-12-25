@@ -20,6 +20,7 @@ import javax.inject.Named;
 import javax.interceptor.Interceptors;
 
 import org.apache.ibatis.session.SqlSession;
+import org.mybatis.cdi.impl.LocalTransactionInterceptor;
 
 @Interceptors(LocalTransactionInterceptor.class)
 @Transactional(rollbackFor=RollbackException.class)

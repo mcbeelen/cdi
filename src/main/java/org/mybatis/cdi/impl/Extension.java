@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.mybatis.cdi;
+package org.mybatis.cdi.impl;
 
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
@@ -36,6 +36,7 @@ import javax.inject.Named;
 import javax.inject.Qualifier;
 
 import org.apache.ibatis.session.SqlSession;
+import org.mybatis.cdi.Mapper;
 
 /**
  * MyBatis CDI extension
