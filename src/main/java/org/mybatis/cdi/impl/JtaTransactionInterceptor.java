@@ -33,6 +33,7 @@ import javax.transaction.TransactionSynchronizationRegistry;
 import javax.transaction.UserTransaction;
 
 import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.defaults.DefaultSqlSession;
 import org.mybatis.cdi.MybatisCdiConfigurationException;
 import org.mybatis.cdi.Transactional;
 
@@ -119,26 +120,36 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
 	      throw unwrapped;
 	    } finally {
 	      if (needsRollback) {
-	        if (wasJtaTxActive) {
+          rollback(transactional);
+          close();
+          if (wasJtaTxActive) {
 	          userTransaction.setRollbackOnly();
 	        } else {
-	          rollback(transactional);
 	          userTransaction.rollback();
 	        }
 	      } else {
-	        if (!wasJtaTxActive) {
+	        if (wasJtaTxActive) {
+	          // cannot commit the session because the tx may be rolledback later
+	          // but should flush statements and close the JDBC connection
+	          flushAndDisconnect();
+	        } else {
 	          commit(transactional);
+	          close();
 	          userTransaction.commit();
 	        }
-	      }
-	      if (!wasJtaTxActive) {
-	        close(); // should this be done before?
 	      }
 	    }
     } finally {
     	TransactionRegistry.clear();    	
     }
     return result;
+  }
+
+  private void flushAndDisconnect() {
+    for (SqlSession session : TransactionRegistry.getManagers()) {
+      session.flushStatements();
+      ((DefaultSqlSession) session).disconnect(); // not public
+    }
   }
 
   private boolean isTransactionActive() throws SystemException {
