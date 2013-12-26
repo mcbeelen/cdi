@@ -36,7 +36,7 @@ import org.mybatis.cdi.Transactional;
 public class AbstractTransactionInterceptor {
 
   @Inject
-  private SqlSessionManagerRegistry registry;
+  protected SqlSessionManagerRegistry registry;
 
   protected boolean needsRollback(Transactional transactional, Throwable throwable) {
     if (transactional.rollbackOnly()) {

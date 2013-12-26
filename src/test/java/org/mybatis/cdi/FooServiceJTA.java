@@ -20,19 +20,27 @@ import javax.interceptor.Interceptors;
 
 import org.mybatis.cdi.impl.JtaTransactionInterceptor;
 
-@Interceptors(JtaTransactionInterceptor.class)
-@Transactional
 public class FooServiceJTA {  
   
   @Inject @Mapper @JtaManager private UserMapper userMapper;
- 
-  public User getUser(int userId) {
+  
+  @Interceptors(JtaTransactionInterceptor.class)
+  @Transactional
+  public User getUserWithNoTransaction(int userId) {
     return this.userMapper.getUser(userId);
   }
 
-  public void insertUser(User user, boolean fail) {
+  @Interceptors(JtaTransactionInterceptor.class)
+  @Transactional
+  public void insertUserWithTransactional(User user) {
     this.userMapper.insertUser(user);
-    if (fail) throw new RuntimeException("fail");
+  }
+
+  @Interceptors(JtaTransactionInterceptor.class)
+  @Transactional
+  public void insertUserWithTransactionalAndFail(User user) {
+    this.userMapper.insertUser(user);
+    throw new RuntimeException("fail");
   }
   
 }

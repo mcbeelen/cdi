@@ -86,12 +86,12 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
         }
       } else {
         if (!wasJtaTxActive) {
-          flush();
+          commit(transactional);
           userTransaction.commit();
         }
       }
       if (!wasJtaTxActive) {
-        close();
+        close(); // should this be done before?
       }
     }
     return result;
@@ -121,10 +121,17 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
       this.transactional = transactional;
     }
 
+    /**
+     * It is not called in a rollback!
+     */
     public void beforeCompletion() {
       flush();
     }
 
+    /**
+     * TODO Can be called from a different thread
+     * SqlSessionManager won't be able to find the SqlSession in the current thread
+     */
     public void afterCompletion(int status) {
       try {
         if (status == Status.STATUS_COMMITTED) {
