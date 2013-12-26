@@ -18,11 +18,10 @@ package org.mybatis.cdi.impl;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.UndeclaredThrowableException;
 
-import javax.inject.Inject;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
-import org.apache.ibatis.session.SqlSessionManager;
+import org.apache.ibatis.session.SqlSession;
 import org.mybatis.cdi.Transactional;
 
 /**
@@ -34,9 +33,6 @@ import org.mybatis.cdi.Transactional;
 @Transactional
 @Interceptor
 public class AbstractTransactionInterceptor {
-
-  @Inject
-  protected SqlSessionManagerRegistry registry;
 
   protected boolean needsRollback(Transactional transactional, Throwable throwable) {
     if (transactional.rollbackOnly()) {
@@ -61,37 +57,20 @@ public class AbstractTransactionInterceptor {
     return t;
   }
 
-  protected boolean start(Transactional transactional) {
-    boolean started = false;
-    for (SqlSessionManager manager : registry.getManagers()) {
-      if (!manager.isManagedSessionStarted()) {
-        manager.startManagedSession(transactional.executorType(), transactional.isolation().getTransactionIsolationLevel());
-        started = true;
-      }
-    }
-    return started;
-  }
-
   protected void commit(Transactional transactional) {
-    for (SqlSessionManager manager : registry.getManagers()) {
+    for (SqlSession manager : TransactionRegistry.getManagers()) {
       manager.commit(transactional.force());
     }
   }
 
   protected void rollback(Transactional transactional) {
-    for (SqlSessionManager manager : registry.getManagers()) {
+    for (SqlSession manager : TransactionRegistry.getManagers()) {
       manager.rollback(transactional.force());
-    }
-  }
-
-  protected void flush() {
-    for (SqlSessionManager manager : registry.getManagers()) {
-      manager.flushStatements();
     }
   }
   
   protected void close() {
-    for (SqlSessionManager manager : registry.getManagers()) {
+    for (SqlSession manager : TransactionRegistry.getManagers()) {
       manager.close();
     }
   }

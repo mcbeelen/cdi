@@ -17,6 +17,7 @@ package org.mybatis.cdi;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.inject.Produces;
+import javax.transaction.TransactionManager;
 import javax.transaction.TransactionSynchronizationRegistry;
 import javax.transaction.UserTransaction;
 
@@ -25,7 +26,12 @@ import bitronix.tm.TransactionManagerServices;
 public class UserTransactionProvider {
   
   @Produces @ApplicationScoped
-  public UserTransaction getTransactionManager() {
+  public TransactionManager getTransactionManager() {
+    return  TransactionManagerServices.getTransactionManager();
+  }
+
+  @Produces @ApplicationScoped
+  public UserTransaction getUserTransaction() {
     return  TransactionManagerServices.getTransactionManager();
   }
 

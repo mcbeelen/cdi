@@ -27,9 +27,9 @@ import org.mybatis.cdi.Transactional;
  * guarantee atomiticy if there is more than one {@code SqlSssionManager}. Use
  * XA drivers, a JTA container and the {@link JtaTransactionInterceptor} in that
  * case.
- *
+ * 
  * @see JtaTransactionInterceptor
- *
+ * 
  * @author Frank David Martínez
  */
 @Transactional
@@ -38,28 +38,33 @@ public class LocalTransactionInterceptor extends AbstractTransactionInterceptor 
 
   @AroundInvoke
   public Object invoke(InvocationContext ctx) throws Exception {
-    Transactional transactional = getTransactionalAnnotation(ctx);
-    boolean started = start(transactional);
-    boolean needsRollback = false;
+
     Object result;
+    Transactional transactional = getTransactionalAnnotation(ctx);
+
+    boolean wasMyBatisTXActive = TransactionRegistry.isCurrentTransactionActive();
+    TransactionRegistry.setCurrentTransactionActive(true);
+
     try {
-      result = ctx.proceed();
-    }
-    catch (Exception ex) {
-      Exception unwrapped = unwrapException(ex); 
-      needsRollback = needsRollback(transactional, unwrapped);
-      throw unwrapped;
-    }
-    finally {
-      if (started) {
-        if (needsRollback) {
-          rollback(transactional);
-        } 
-        else {
-          commit(transactional);
+      boolean needsRollback = false;
+      try {
+        result = ctx.proceed();
+      } catch (Exception ex) {
+        Exception unwrapped = unwrapException(ex);
+        needsRollback = needsRollback(transactional, unwrapped);
+        throw unwrapped;
+      } finally {
+        if (!wasMyBatisTXActive) {
+          if (needsRollback) {
+            rollback(transactional);
+          } else {
+            commit(transactional);
+          }
+          close();
         }
-        close();
       }
+    } finally {
+      TransactionRegistry.clear();
     }
     return result;
   }

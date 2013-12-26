@@ -32,9 +32,9 @@ import org.mybatis.cdi.MybatisCdiConfigurationException;
  */
 public class CDIUtils {
 
-  public static SqlSessionManagerRegistry getRegistry(BeanManager beanManager, CreationalContext creationalContext) {
-    Iterator<Bean<?>> beans = beanManager.getBeans(SqlSessionManagerRegistry.class).iterator();
-    return (SqlSessionManagerRegistry) beanManager.getReference(beans.next(), SqlSessionManagerRegistry.class, creationalContext);
+  public static TransactionRegistry getRegistry(BeanManager beanManager, CreationalContext creationalContext) {
+    Iterator<Bean<?>> beans = beanManager.getBeans(TransactionRegistry.class).iterator();
+    return (TransactionRegistry) beanManager.getReference(beans.next(), TransactionRegistry.class, creationalContext);
   }
 
   public static SqlSessionFactory findSqlSessionFactory(String name, Set<Annotation> qualifiers, BeanManager beanManager, CreationalContext creationalContext) {

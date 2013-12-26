@@ -31,7 +31,6 @@ import javax.enterprise.util.AnnotationLiteral;
 
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
-import org.apache.ibatis.session.SqlSessionManager;
 
 /**
  * Internal CDI metadata for a mapper bean.
@@ -101,7 +100,7 @@ public class MyBatisBean implements Bean {
   }
 
   public Object create(CreationalContext creationalContext) {
-    SqlSessionManager manager = findSqlSessionManager(creationalContext);
+    SqlSessionProxy manager = findSqlSessionManager(creationalContext);
     return SqlSession.class.equals(type) ? manager : manager.getMapper(type);
   }
 
@@ -109,9 +108,9 @@ public class MyBatisBean implements Bean {
     creationalContext.release();
   }
 
-  private SqlSessionManager findSqlSessionManager(CreationalContext creationalContext) {
+  private SqlSessionProxy findSqlSessionManager(CreationalContext creationalContext) {
     SqlSessionFactory factory = CDIUtils.findSqlSessionFactory(sqlSessionFactoryName, qualifiers, beanManager, creationalContext);
-    return CDIUtils.getRegistry(beanManager, creationalContext).getManager(factory);
+    return new SqlSessionProxy(factory);
   }
 
 }
