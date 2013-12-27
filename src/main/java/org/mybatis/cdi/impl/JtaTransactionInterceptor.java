@@ -15,6 +15,7 @@
  */
 package org.mybatis.cdi.impl;
 
+import java.sql.SQLException;
 import java.util.Collection;
 
 import javax.annotation.PostConstruct;
@@ -25,6 +26,9 @@ import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
+import javax.transaction.HeuristicMixedException;
+import javax.transaction.HeuristicRollbackException;
+import javax.transaction.RollbackException;
 import javax.transaction.Status;
 import javax.transaction.Synchronization;
 import javax.transaction.SystemException;
@@ -33,15 +37,13 @@ import javax.transaction.TransactionSynchronizationRegistry;
 import javax.transaction.UserTransaction;
 
 import org.apache.ibatis.session.SqlSession;
-import org.apache.ibatis.session.defaults.DefaultSqlSession;
-import org.mybatis.cdi.MybatisCdiConfigurationException;
 import org.mybatis.cdi.Transactional;
 
 /**
  * Interceptor for JTA transactions. Requires a JTA 1.1 container. 
  * MyBatis should be configured to use the {@code MANAGED} transaction manager.
  * 
- * Supports these scenarios:
+ * Supports two scenarios:
  * <ul>
  * <li>MyBatis starts a JTA TX and ends it</li>
  * <li>MyBatis TX joins to an externally started JTA TX and ends with it</li>
@@ -90,65 +92,108 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
     
     Object result;
 	  
-    // Case MB active Jta active Description
-    // 1    no        no         Start JTA and MB TX and end them
-    // 2    yes       no         Not possible
-    // 3    no        yes        JTA was externally initiated. Register a sync.
-    // 4    yes       yes        Do nothing, we are an inner method call
+    // Case MB initiator Jta initiator Description
+    // 1    yes          yes           New TX: start JTA and MB TX and end them
+    // 2    no           yes           Not possible
+    // 3    yes          no            JTA was externally initiated. Register a sync.
+    // 4    no           no            Do nothing, we are an inner method call
 
-    Transactional transactional = getTransactionalAnnotation(ctx);
-
-    // start mybatis tx
-    boolean wasMyBatisTXActive = TransactionRegistry.isCurrentTransactionActive();
+    TransactionInfo info = buildTransactionInfo(ctx);
     TransactionRegistry.setCurrentTransactionActive(true);
     
+    startJtaTransactionIfNeeded(info);
     try {
-	    // start jta tx if needed
-	    boolean wasJtaTxActive = isTransactionActive();
-	    if (!wasJtaTxActive) { // case 1
-	      userTransaction.begin(); 
-	    } else if (!wasMyBatisTXActive) { // case 3
-	      registerSyncronization(transactional); 
-	    }
-	    
-	    boolean needsRollback = false;    
-	    try {
-	      result = ctx.proceed();
-	    } catch (Exception ex) {
-	      Exception unwrapped = unwrapException(ex);
-	      needsRollback = needsRollback(transactional, unwrapped);
-	      throw unwrapped;
-	    } finally {
-	      if (needsRollback) {
-          rollback(transactional);
-          close();
-          if (wasJtaTxActive) {
-	          userTransaction.setRollbackOnly();
-	        } else {
-	          userTransaction.rollback();
-	        }
-	      } else {
-	        if (wasJtaTxActive) {
-	          // cannot commit the session because the tx may be rolledback later
-	          // but should flush statements and close the JDBC connection
-	          flushAndDisconnect();
-	        } else {
-	          commit(transactional);
-	          close();
-	          userTransaction.commit();
-	        }
-	      }
-	    }
+      result = ctx.proceed();
+      commitAfterReturning(info);
+    } catch (Exception ex) {
+      Exception unwrapped = unwrapException(ex);      
+      handleException(info, unwrapped);
+      throw unwrapped;
     } finally {
-    	TransactionRegistry.clear();    	
+    	cleanUp();    	
     }
     return result;
   }
+  
+  private void commitAfterReturning(TransactionInfo info) throws SecurityException, IllegalStateException, RollbackException, HeuristicMixedException, HeuristicRollbackException, SystemException {
+    if (!info.isMBTxInitiator()) {
+      // inner method, do nothing
+      return;
+    }
+    if (!info.isJtaTxInitiator()) {
+      // cannot commit the session because the tx may be rolledback later
+      // flush statements and close the JDBC connection before tx ends
+      // the syncronization will commit or rollback depending on how tx ends
+      if (info.isCanJoinJta()) {
+        flush();
+        disconnect();
+      } else {
+        // could not register a sync so lets commit
+        // if afterwards, the Jta tx rolls back 2nd level caches may have inconsistent data
+        commit(info.getTransactional());
+        close();
+      }
+    } else {
+      commit(info.getTransactional());
+      close();
+      userTransaction.commit();
+    }
+  }
+  
+  private void cleanUp() {
+    TransactionRegistry.clear();
+  }
+  
+  private TransactionInfo buildTransactionInfo(InvocationContext ctx) throws SystemException {
+    TransactionInfo info = new TransactionInfo();
+    info.setTransactional(getTransactionalAnnotation(ctx));
+    info.setMBTxInitiator(!TransactionRegistry.isCurrentTransactionActive());
+    info.setJtaTxInitiator(!isTransactionActive());
+    return info;
+  }
+  
+  private void handleException(TransactionInfo info, Exception ex) throws IllegalStateException, SecurityException, SystemException {
+    if (!info.isMBTxInitiator()) {      
+      return;
+    }    
+    boolean needsRollback = needsRollback(info.getTransactional(), ex);
+    rollback(info.getTransactional());
+    close();
+    if (info.isJtaTxInitiator) {
+      userTransaction.rollback();
+    } else {
+      userTransaction.setRollbackOnly();
+    }
+  }
+  
+  private void startJtaTransactionIfNeeded(TransactionInfo info) throws Exception, Exception {
+    if (!info.isMBTxInitiator()) {
+      return;
+    }    
+    if (info.isJtaTxInitiator()) {
+      userTransaction.begin();
+    } else {
+      joinExistingJtaTransaction(info);
+    }   
+  }
+  
+  private void joinExistingJtaTransaction(TransactionInfo info) throws Exception {
+    registerSyncronization(info);
+  }
 
-  private void flushAndDisconnect() {
+  private void flush() {
     for (SqlSession session : TransactionRegistry.getManagers()) {
       session.flushStatements();
-      ((DefaultSqlSession) session).disconnect(); // not public
+    }
+  }
+
+  private void disconnect() {
+    for (SqlSession session : TransactionRegistry.getManagers()) {
+      try {
+        session.getConnection().close();
+      } catch (SQLException ignored) {
+        // ignored
+      }
     }
   }
 
@@ -156,24 +201,65 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
 	  return userTransaction.getStatus() != Status.STATUS_NO_TRANSACTION;
   }
 
-  private void registerSyncronization(Transactional transactional) throws Exception {
-    SqlSessionSynchronization sync = new SqlSessionSynchronization(TransactionRegistry.getManagers(), transactional);
+  private void registerSyncronization(TransactionInfo info) throws Exception {
+    SqlSessionSynchronization sync = new SqlSessionSynchronization(info, TransactionRegistry.getManagers());
     if (registry != null) {
       registry.registerInterposedSynchronization(sync);
+      info.setCanJoinJta(true);
     } else if (TransactionManager.class.isAssignableFrom(userTransaction.getClass())) {
       ((TransactionManager) userTransaction).getTransaction().registerSynchronization(sync);
-    } else {
-      throw new MybatisCdiConfigurationException("Cannot join existing transaction because could not find a TransactionSynchronizationRegistry");
+      info.setCanJoinJta(true);
+    } 
+  }
+  
+  private static class TransactionInfo {
+
+    private Transactional transactional;
+    private boolean isMBTxInitiator;    
+    private boolean isJtaTxInitiator;
+    private boolean canJoinJta;
+    
+    public Transactional getTransactional() {
+      return transactional;
     }
+
+    public void setTransactional(Transactional transactional) {
+      this.transactional = transactional;
+    }
+
+    public boolean isMBTxInitiator() {
+      return isMBTxInitiator;
+    }
+
+    public void setMBTxInitiator(boolean isMBTxInitiator) {
+      this.isMBTxInitiator = isMBTxInitiator;
+    }
+
+    public boolean isJtaTxInitiator() {
+      return isJtaTxInitiator;
+    }
+
+    public void setJtaTxInitiator(boolean isJtaTxInitiator) {
+      this.isJtaTxInitiator = isJtaTxInitiator;
+    }
+
+    public boolean isCanJoinJta() {
+      return canJoinJta;
+    }
+
+    public void setCanJoinJta(boolean canJoinJta) {
+      this.canJoinJta = canJoinJta;
+    }
+    
   }
 
   public static class SqlSessionSynchronization implements Synchronization {
 
-    private Transactional transactional;
+    private TransactionInfo info;
     private Collection<SqlSession> resources;
 
-    public SqlSessionSynchronization(Collection<SqlSession> resources, Transactional transactional) {
-      this.transactional = transactional;
+    public SqlSessionSynchronization(TransactionInfo info, Collection<SqlSession> resources) {
+      this.info = info;
       this.resources = resources;
     }
 
@@ -195,7 +281,8 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
       for (SqlSession session : resources) {
         try {
           if (status == Status.STATUS_COMMITTED) {
-            session.commit(transactional.force());
+            // cannot force commit because connection is closed
+            session.commit(false);
           }
         } finally {
           session.close();
