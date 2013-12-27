@@ -49,46 +49,46 @@ public class TestingIoC {
     user.setId(20);
     user.setName("User20");
     fooService.insertUser(user);
-    Assert.assertEquals("User20", fooService.getUser(20).getName());
+    Assert.assertEquals(user.getName(), fooService.getUser(user.getId()).getName());
   }
 
   @Test
   public void shouldInsertAUserThatFailsWithRuntimeAndRollItBack() {
     User user = new User();
     user.setId(30);
-    user.setName("User40");
+    user.setName("User30");
     try {
       fooService.insertUserAndThrowARuntime(user);
     } catch (Exception ignore) {
       // ignored
     }
-    Assert.assertNull(fooService.getUser(40));
+    Assert.assertNull(fooService.getUser(user.getId()));
   }
 
   @Test
   public void shouldInsertAUserThatFailsWithACheckedAndCommit() {
     User user = new User();
-    user.setId(30);
-    user.setName("User30");
+    user.setId(40);
+    user.setName("User40");
     try {
       fooService.insertUserAndThrowACheckedThatShouldNotRollback(user);
     } catch (Exception ignore) {
       // ignored
     }
-    Assert.assertEquals("User30", fooService.getUser(30).getName());
+    Assert.assertEquals(user.getName(), fooService.getUser(user.getId()).getName());
   }
 
   @Test
   public void shouldInsertAUserThatFailsWithACustomExceptionMarkedToRollbackAndRollItBack() {
     User user = new User();
-    user.setId(30);
-    user.setName("User30");
+    user.setId(50);
+    user.setName("User50");
     try {
       fooService.insertUserAndThrowACheckedThatShouldRollback(user);
     } catch (Exception ignore) {
       // ignored
     }
-    Assert.assertNull(fooService.getUser(30));
+    Assert.assertNull(fooService.getUser(user.getId()));
   }
 
   // TEST JTA
@@ -109,8 +109,8 @@ public class TestingIoC {
   @Test
   public void jtaShouldInsertAUserAndCommit() {
     User user = new User();
-    user.setId(20);
-    user.setName("User20");
+    user.setId(21);
+    user.setName("User21");
     fooServiceJTA.insertUserWithTransactional(user);
     Assert.assertEquals(user.getName(), fooServiceJTA.getUserWithNoTransaction(user.getId()).getName());
   }
@@ -118,8 +118,8 @@ public class TestingIoC {
   @Test
   public void jtaShouldInsertAUserAndRollItBack() {
     User user = new User();
-    user.setId(30);
-    user.setName("User30");
+    user.setId(31);
+    user.setName("User31");
     try {
       fooServiceJTA.insertUserWithTransactionalAndFail(user);
     } catch (Exception ignore) {
@@ -127,12 +127,51 @@ public class TestingIoC {
     }
     Assert.assertNull(fooServiceJTA.getUserWithNoTransaction(user.getId()));
   }
+  
+  @Test
+  public void jtaShouldInsertAUserThatFailsWithACheckedAndCommit() {
+    User user = new User();
+    user.setId(41);
+    user.setName("User41");
+    try {
+      fooServiceJTA.insertUserAndThrowACheckedThatShouldNotRollback(user);
+    } catch (Exception ignore) {
+      // ignored
+    }
+    Assert.assertEquals(user.getName(), fooServiceJTA.getUserWithNoTransaction(user.getId()).getName());
+  }  
 
+  @Test
+  public void jtaShouldInsertAUserThatFailsWithRuntimeAndRollItBack() {
+    User user = new User();
+    user.setId(51);
+    user.setName("User51");
+    try {
+      fooService.insertUserAndThrowARuntime(user);
+    } catch (Exception ignore) {
+      // ignored
+    }
+    Assert.assertNull(fooServiceJTA.getUserWithNoTransaction(user.getId()));
+  }
+
+  @Test
+  public void jtaShouldInsertAUserThatFailsWithACustomExceptionMarkedToRollbackAndRollItBack() {
+    User user = new User();
+    user.setId(61);
+    user.setName("User61");
+    try {
+      fooServiceJTA.insertUserAndThrowACheckedThatShouldRollback(user);
+    } catch (Exception ignore) {
+      // ignored
+    }
+    Assert.assertNull(fooService.getUser(user.getId()));
+  }
+  
   @Test
   public void jtaShouldInsertAUserWithExistingJtaTxAndCommit() throws Exception {
     User user = new User();
-    user.setId(40);
-    user.setName("User40");
+    user.setId(71);
+    user.setName("User71");
     userTransaction.begin();
     fooServiceJTA.insertUserWithTransactional(user);
     userTransaction.commit();
@@ -142,8 +181,8 @@ public class TestingIoC {
   @Test
   public void jtaShouldInsertAUserWithExistingJtaTxAndRollItBack() throws Exception {
     User user = new User();
-    user.setId(50);
-    user.setName("User50");
+    user.setId(81);
+    user.setName("User81");
     userTransaction.begin();
     fooServiceJTA.insertUserWithTransactional(user);
     userTransaction.rollback();

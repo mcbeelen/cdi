@@ -42,5 +42,19 @@ public class FooServiceJTA {
     this.userMapper.insertUser(user);
     throw new RuntimeException("fail");
   }
+
+  @Interceptors(JtaTransactionInterceptor.class)
+  @Transactional
+  public void insertUserAndThrowACheckedThatShouldNotRollback(User user) throws NoRollbackException {
+    this.userMapper.insertUser(user);
+    throw new NoRollbackException();
+  }
+  
+  @Interceptors(JtaTransactionInterceptor.class)
+  @Transactional(rollbackFor=RollbackException.class)
+  public void insertUserAndThrowACheckedThatShouldRollback(User user) throws RollbackException {
+    this.userMapper.insertUser(user);
+    throw new RollbackException();
+  }
   
 }

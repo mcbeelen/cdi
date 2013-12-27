@@ -57,19 +57,19 @@ public class AbstractTransactionInterceptor {
     return t;
   }
 
-  protected void commit(Transactional transactional) {
+  protected void commitSqlSession(Transactional transactional) {
     for (SqlSession session : TransactionRegistry.getManagers()) {
       session.commit(transactional.force());
     }
   }
 
-  protected void rollback(Transactional transactional) {
+  protected void rollbackSqlSession(Transactional transactional) {
     for (SqlSession session : TransactionRegistry.getManagers()) {
       session.rollback(transactional.force());
     }
   }
   
-  protected void close() {
+  protected void closeSqlSession() {
     for (SqlSession session : TransactionRegistry.getManagers()) {
       session.close(); // does not fail
     }

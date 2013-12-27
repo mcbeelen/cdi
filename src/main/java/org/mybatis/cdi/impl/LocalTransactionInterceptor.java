@@ -48,7 +48,7 @@ public class LocalTransactionInterceptor extends AbstractTransactionInterceptor 
 
     try {
       result = ctx.proceed();
-      commitAfterReturning(transactional, isMBTxInitiator);
+      commit(transactional, isMBTxInitiator);
     } catch (Exception ex) {
       Exception unwrapped = unwrapException(ex);
       handleException(transactional, unwrapped, isMBTxInitiator);
@@ -59,14 +59,14 @@ public class LocalTransactionInterceptor extends AbstractTransactionInterceptor 
     return result;
   }
 
-  private void commitAfterReturning(Transactional transactional, boolean isMBTxInitiator) {
+  private void commit(Transactional transactional, boolean isMBTxInitiator) {
     if (!isMBTxInitiator) {
       return;
     }
     try {
-      commit(transactional);
+      commitSqlSession(transactional);
     } finally {
-      close();
+      closeSqlSession();
     }
   }
 
@@ -76,10 +76,12 @@ public class LocalTransactionInterceptor extends AbstractTransactionInterceptor 
     }
     try {
       if (needsRollback(transactional, ex)) {
-        rollback(transactional);
+        rollbackSqlSession(transactional);
+      } else {
+        commitSqlSession(transactional);
       }
     } finally {
-      close();
+      closeSqlSession();
     }
   }
 }

@@ -104,7 +104,7 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
     startJtaTransactionIfNeeded(info);
     try {
       result = ctx.proceed();
-      commitAfterReturning(info);
+      commit(info);
     } catch (Exception ex) {
       Exception unwrapped = unwrapException(ex);      
       handleException(info, unwrapped);
@@ -115,7 +115,7 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
     return result;
   }
   
-  private void commitAfterReturning(TransactionInfo info) throws SecurityException, IllegalStateException, RollbackException, HeuristicMixedException, HeuristicRollbackException, SystemException {
+  private void commit(TransactionInfo info) throws SecurityException, IllegalStateException, RollbackException, HeuristicMixedException, HeuristicRollbackException, SystemException {
     if (!info.isMBTxInitiator()) {
       // inner method, do nothing
       return;
@@ -130,12 +130,12 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
       } else {
         // could not register a sync so lets commit
         // if afterwards, the Jta tx rolls back 2nd level caches may have inconsistent data
-        commit(info.getTransactional());
-        close();
+        commitSqlSession(info.getTransactional());
+        closeSqlSession();
       }
     } else {
-      commit(info.getTransactional());
-      close();
+      commitSqlSession(info.getTransactional());
+      closeSqlSession();
       userTransaction.commit();
     }
   }
@@ -152,17 +152,23 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
     return info;
   }
   
-  private void handleException(TransactionInfo info, Exception ex) throws IllegalStateException, SecurityException, SystemException {
+  private void handleException(TransactionInfo info, Exception ex) throws IllegalStateException, SecurityException, SystemException, RollbackException, HeuristicMixedException, HeuristicRollbackException {
     if (!info.isMBTxInitiator()) {      
       return;
     }    
-    boolean needsRollback = needsRollback(info.getTransactional(), ex);
-    rollback(info.getTransactional());
-    close();
-    if (info.isJtaTxInitiator) {
-      userTransaction.rollback();
+    if (needsRollback(info.getTransactional(), ex)) {
+      try {
+        rollbackSqlSession(info.getTransactional());
+        if (info.isJtaTxInitiator) {
+          userTransaction.rollback();
+        } else {
+          userTransaction.setRollbackOnly();
+        }
+      } finally {
+        closeSqlSession();
+      }
     } else {
-      userTransaction.setRollbackOnly();
+      commit(info);
     }
   }
   
@@ -202,7 +208,7 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
   }
 
   private void registerSyncronization(TransactionInfo info) throws Exception {
-    SqlSessionSynchronization sync = new SqlSessionSynchronization(info, TransactionRegistry.getManagers());
+    SqlSessionSynchronization sync = new SqlSessionSynchronization(TransactionRegistry.getManagers());
     if (registry != null) {
       registry.registerInterposedSynchronization(sync);
       info.setCanJoinJta(true);
@@ -255,11 +261,9 @@ public class JtaTransactionInterceptor extends AbstractTransactionInterceptor {
 
   public static class SqlSessionSynchronization implements Synchronization {
 
-    private TransactionInfo info;
     private Collection<SqlSession> resources;
 
-    public SqlSessionSynchronization(TransactionInfo info, Collection<SqlSession> resources) {
-      this.info = info;
+    public SqlSessionSynchronization(Collection<SqlSession> resources) {
       this.resources = resources;
     }
 
