@@ -18,6 +18,7 @@ package org.mybatis.cdi.impl;
 import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
+import javax.transaction.SystemException;
 
 import org.mybatis.cdi.Transactional;
 
@@ -42,31 +43,43 @@ public class LocalTransactionInterceptor extends AbstractTransactionInterceptor 
     Object result;
     Transactional transactional = getTransactionalAnnotation(ctx);
 
-    boolean wasMyBatisTXActive = TransactionRegistry.isCurrentTransactionActive();
+    boolean isMBTxInitiator = !TransactionRegistry.isCurrentTransactionActive();
     TransactionRegistry.setCurrentTransactionActive(true);
 
     try {
-      boolean needsRollback = false;
-      try {
-        result = ctx.proceed();
-      } catch (Exception ex) {
-        Exception unwrapped = unwrapException(ex);
-        needsRollback = needsRollback(transactional, unwrapped);
-        throw unwrapped;
-      } finally {
-        if (!wasMyBatisTXActive) {
-          if (needsRollback) {
-            rollback(transactional);
-          } else {
-            commit(transactional);
-          }
-          close();
-        }
-      }
+      result = ctx.proceed();
+      commitAfterReturning(transactional, isMBTxInitiator);
+    } catch (Exception ex) {
+      Exception unwrapped = unwrapException(ex);
+      handleException(transactional, unwrapped, isMBTxInitiator);
+      throw unwrapped;
     } finally {
       TransactionRegistry.clear();
     }
     return result;
   }
 
+  private void commitAfterReturning(Transactional transactional, boolean isMBTxInitiator) {
+    if (!isMBTxInitiator) {
+      return;
+    }
+    try {
+      commit(transactional);
+    } finally {
+      close();
+    }
+  }
+
+  private void handleException(Transactional transactional, Exception ex, boolean isMBTxInitiator) throws IllegalStateException, SecurityException, SystemException {
+    if (!isMBTxInitiator) {
+      return;
+    }
+    try {
+      if (needsRollback(transactional, ex)) {
+        rollback(transactional);
+      }
+    } finally {
+      close();
+    }
+  }
 }
