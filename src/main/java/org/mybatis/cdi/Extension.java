@@ -106,8 +106,23 @@ public class Extension implements javax.enterprise.inject.spi.Extension {
   public <X> void processInjectionTarget(@Observes ProcessInjectionTarget<X> event) {
     final InjectionTarget<X> it = event.getInjectionTarget();
     for (final InjectionPoint ip : it.getInjectionPoints()) {
-      injectionPoints.add(ip);
+      if (isThisExtensionResponsibleForProvidingInjectedType(ip)) {
+        injectionPoints.add(ip);
+      }
     }
+  }
+
+  private boolean isThisExtensionResponsibleForProvidingInjectedType(InjectionPoint ip) {
+    Type baseType = ip.getAnnotated().getBaseType();
+    return isTheInjectedTypeMapper(baseType) || SqlSession.class.equals(baseType);
+  }
+
+  private boolean isTheInjectedTypeMapper(Type baseType) {
+    if (baseType instanceof Class) {
+      Class clazz = (Class) baseType;
+      return clazz.isAnnotationPresent(Mapper.class);
+    }
+    return false;
   }
 
   /**
